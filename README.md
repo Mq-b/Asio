@@ -2,9 +2,11 @@
 - [前言](#前言)
 - [正文](#正文)
   - [线程池的基本使用`asio::thread_pool`](#线程池的基本使用asiothread_pool)
-  - [利用`asio`实现一个简单的回声`TCP` `server`与`client`](#利用asio实现一个简单的回声tcp-server与client)
+  - [利用`asio`实现一个简单的同步回声`TCP` `server`与`client`](#利用asio实现一个简单的同步回声tcp-server与client)
     - [`server`](#server)
     - [`client`](#client)
+  - [完成一个异步`TCP` `server`和`client`](#完成一个异步tcp-server和client)
+    - [`server`](#server-1)
 
 # 环境
 
@@ -96,7 +98,7 @@ int main() {
 
 <br>
 
-## 利用`asio`实现一个简单的回声`TCP` `server`与`client`
+## 利用`asio`实现一个简单的同步回声`TCP` `server`与`client`
 
 ### `server`
 
@@ -197,3 +199,68 @@ int main() {
 ```
 
 实际上我觉得`client`已经不需要讲解了，已然非常的清晰明了了。
+
+<br>
+
+## 完成一个异步`TCP` `server`和`client`
+
+### `server`
+
+```cpp
+#include<iostream>
+#include<thread>
+#include<functional>
+#include<chrono>
+#include<format>
+#include<fmt/core.h>
+#include<boost/asio.hpp>
+namespace asio = boost::asio;
+namespace ip = asio::ip;
+using socket_ptr = boost::shared_ptr<ip::tcp::socket>;
+using namespace std::placeholders;
+
+asio::io_service service;
+ip::tcp::endpoint ep{ ip::tcp::v4(),2001 };
+ip::tcp::acceptor acc{ service,ep };//构造函数传入了ep，省去了调用bind成员函数的步骤
+socket_ptr sock{ new ip::tcp::socket{service} };
+
+void handle_accept(socket_ptr sock, const boost::system::error_code& err);
+void start_accept(socket_ptr sock) {
+	acc.async_accept(*sock, std::bind(handle_accept, sock, _1));//不堵塞 启动异步接受
+	fmt::print("start_accept 表示这是异步的，并没有堵塞\n");
+}
+void handle_accept(socket_ptr sock, const boost::system::error_code& err) {//当接收到客户端连接时，handle_accept被调用
+	if (err) return;
+	sock->write_some(asio::buffer(std::format("{} server:笑死人了惹\n", std::chrono::system_clock::now())));
+
+	//当完成使用后创建新的socket，再次调用start_accept()，创建等待另一个客户端连接的异步操作
+	socket_ptr socket(new ip::tcp::socket(service));
+	start_accept(socket);
+}
+int main() {
+	start_accept(sock);
+	fmt::print("main\n");
+	service.run();
+}
+```
+
+使用`nc`作为`client`：
+
+当没有`client`连接的时候，打印：
+
+    start_accept 表示这是异步的，并没有堵塞
+    main
+
+当有三个`client`连接的时候，打印：
+
+    start_accept 表示这是异步的，并没有堵塞
+    main
+    start_accept 表示这是异步的，并没有堵塞
+    start_accept 表示这是异步的，并没有堵塞
+    start_accept 表示这是异步的，并没有堵塞
+
+三个`client`都打印了一句
+
+    2023-05-15 08:40:46.6725041 server:笑死人了惹
+
+这是`server`发送的。
