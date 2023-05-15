@@ -7,6 +7,7 @@
     - [`client`](#client)
   - [完成一个异步`TCP` `server`和`client`](#完成一个异步tcp-server和client)
     - [`server`](#server-1)
+    - [`client`](#client-1)
 
 # 环境
 
@@ -264,3 +265,39 @@ int main() {
     2023-05-15 08:40:46.6725041 server:笑死人了惹
 
 这是`server`发送的。
+
+### `client`
+
+```cpp
+#include<iostream>
+#include<fmt/core.h>
+#include<boost/asio.hpp>
+namespace asio = boost::asio;
+namespace ip = asio::ip;
+
+void connect_handler(ip::tcp::socket& sock, const boost::system::error_code& ec) {//连接成功后打印
+	if (ec) return;
+	static char data[1024]{};
+	sock.read_some(asio::buffer(data));
+	fmt::print("client: {}\n", data);
+}
+
+int main() {
+	asio::io_service service;
+	ip::tcp::socket sock{ service };
+	ip::tcp::endpoint ep{ ip::address::from_string("127.0.0.1"),2001 };
+	sock.async_connect(ep, [&](const auto& ec)
+		{connect_handler(sock,ec); });
+	fmt::print("main\n");
+	service.run();//只要还有待处理的异步操作，servece.run()循环就会一直运行
+}
+```
+
+和上面的`server`一起运行，打印：
+
+    main
+    client: 2023-05-15 11:26:38.7514194 server:笑死人了惹
+
+事实上`client`的逻辑十分简单。和同步并无多大区别。
+
+只要还有待处理的异步操作，`servece.run()`循环就会一直运行。在上述例子中，只执行了一个这样的操作，就是`socket`的`async_connect`。在这之后，`service.run()`就退出了。
