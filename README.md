@@ -8,15 +8,21 @@
   - [完成一个异步`TCP` `server`和`client`](#完成一个异步tcp-server和client)
     - [`server`](#server-1)
     - [`client`](#client-1)
+  - [`asio`信号量](#asio信号量)
+  - [端口设置与读写](#端口设置与读写)
+  - [使用`asio::io_service`连接到系统文件](#使用asioio_service连接到系统文件)
+    - [`windows`](#windows)
+    - [`posix`](#posix)
 
 # 环境
 
 **IDE**：**`Microsoft Visual Studio Enterprise 2022 (64 位) - Current`**
+**编译器**：**`MSVC2022`** & **`gcc11.3`**
 版本 **17.5.4**。
 
 **C++语言标准**：**`/std:c++latest`**。
 
-**操作系统**：**`Windows11`**。
+**操作系统**：**`Windows11`** & **`Ubuntu22.04（wsl）`**。
 
 **包管理器**：使用 **`vcpkg`** 下载和管理 **`fmt`** **`boost.asio`** 的依赖。
 
@@ -301,3 +307,123 @@ int main() {
 事实上`client`的逻辑十分简单。和同步并无多大区别。
 
 只要还有待处理的异步操作，`servece.run()`循环就会一直运行。在上述例子中，只执行了一个这样的操作，就是`socket`的`async_connect`。在这之后，`service.run()`就退出了。
+
+<br>
+
+## `asio`信号量
+
+```cpp
+#include<iostream>
+#include<fmt/core.h>
+#include<boost/asio.hpp>
+namespace asio = boost::asio;
+
+void signal_handler(const boost::system::error_code& err, int signal) {
+	switch (signal) {
+	case SIGINT:fmt::print("SIGNINT\n");
+		break;
+	case SIGTERM:fmt::print("SIGTERM\n");
+		break;
+	default:
+		break;
+	}
+}
+int main() {
+	asio::io_service service;
+	asio::signal_set sig(service, SIGINT, SIGTERM);//可以使用构造函数传入需要处理的信号，也可以直接用add方法
+	sig.async_wait(signal_handler);////设置触发函数
+	service.run();//没有收到信号就会一直堵塞循环运行
+	fmt::print("End\n");
+}
+```
+
+运行之后在控制台输入`CTRL+C`打印：
+
+    SIGNINT
+    End
+
+
+[**`asio::signal_set`**](https://www.boost.org/doc/libs/1_82_0/doc/html/boost_asio/reference/signal_set.html)
+
+<br>
+
+## 端口设置与读写
+
+```cpp
+#include<iostream>
+#include<fmt/core.h>
+#include<boost/asio.hpp>
+namespace asio = boost::asio;
+
+int main() {
+	asio::io_service service;
+	asio::serial_port sp( service);//在Linux端口名称是/dev/ttyS0
+	try{
+		sp.open("COM1");
+	}
+	catch (const std::exception&e){
+		std::cout << e.what() << '\n';
+		exit(0);
+	}
+	asio::serial_port::baud_rate rate(8009);
+	sp.set_option(rate);
+
+	char data[512]{};
+	read(sp, asio::buffer(data));
+	fmt::print("{}", data);
+}
+```
+
+实际上本程序由于我没有外部设备，也懒得整什么虚拟串口，所以并未调试运行。
+
+<br>
+
+## 使用`asio::io_service`连接到系统文件
+
+### `windows`
+
+```cpp
+#include<iostream>
+#include<boost/asio.hpp>
+namespace asio = boost::asio;
+
+int main() {
+	HANDLE h = CreateFile(TEXT("1.txt"), GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_ALWAYS, FILE_FLAG_OVERLAPPED, NULL);
+	asio::io_service service;
+	asio::windows::stream_handle sh(service, h);
+	sh.write_some(asio::buffer("笑死人了惹\n"));
+}
+```
+
+`CreateFile`的第六个参数非常重要：`epol`支持`linux`的普通文件描述符，但是`windows`的普通文件句柄是**同步**的，`iocp`不支持，需要加上那个参数设置为异步的。
+
+<br>
+
+### `posix`
+
+```cpp
+#include<iostream>
+#include<boost/asio.hpp>
+#include<unistd.h>
+namespace asio = boost::asio;
+
+int main() {
+	asio::io_service service;
+	int h = open("test.txt", O_RDWR | O_CREAT, 0);
+	asio::posix::stream_descriptor sh(service);
+	sh.assign(h);
+
+	asio::write(sh, asio::buffer("笑死人了惹\n"));
+}
+```
+
+两个程序并无太大区别，但是我特意在`asio`的接口上展现了一点不同：
+    `windows`写入数据用的是成员函数`write_some()`
+
+`linux`是公共函数`asio::write`；
+
+并且windows绑定文件资源句柄是用构造函数，Linux是用的`assign()`成员函数。
+
+这些都是无所谓的，只是为了展示可以，你大可随意。
+
+`asio`上真的不同的无非是 [**`asio::windows::stream_handle`**](https://www.boost.org/doc/libs/1_82_0/doc/html/boost_asio/reference/windows__stream_handle.html) 和 [**`asio::posix::stream_descriptor`**](https://www.boost.org/doc/libs/1_82_0/doc/html/boost_asio/reference/posix__stream_descriptor.html)，必须是固定平台使用。
