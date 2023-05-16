@@ -30,5 +30,14 @@
     <ClCompile Include="src\05异步客户端.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\06信号量.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\07端口设置与读写.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\08读写Windows文件.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
