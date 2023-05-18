@@ -23,8 +23,9 @@
 # 环境
 
 **IDE**：**`Microsoft Visual Studio Enterprise 2022 (64 位) - Current`**
-**编译器**：**`MSVC2022`** & **`gcc11.3`**
 版本 **17.5.4**。
+
+**编译器**：**`MSVC2022`** & **`gcc11.3`**
 
 **C++语言标准**：**`/std:c++latest`**。
 
