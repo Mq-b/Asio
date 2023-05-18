@@ -557,22 +557,3 @@ int main() {
     client: 2023-05-18 01:42:54.6343521 server:笑死人了惹
 
     笑死
-	asio::io_service service;
-	int h = open("test.txt", O_RDWR | O_CREAT, 0);
-	asio::posix::stream_descriptor sh(service);
-	sh.assign(h);
-
-	asio::write(sh, asio::buffer("笑死人了惹\n"));
-}
-```
-
-两个程序并无太大区别，但是我特意在`asio`的接口上展现了一点不同：
-    `windows`写入数据用的是成员函数`write_some()`
-
-`linux`是公共函数`asio::write`；
-
-并且windows绑定文件资源句柄是用构造函数，Linux是用的`assign()`成员函数。
-
-这些都是无所谓的，只是为了展示可以，你大可随意。
-
-`asio`上真的不同的无非是 [**`asio::windows::stream_handle`**](https://www.boost.org/doc/libs/1_82_0/doc/html/boost_asio/reference/windows__stream_handle.html) 和 [**`asio::posix::stream_descriptor`**](https://www.boost.org/doc/libs/1_82_0/doc/html/boost_asio/reference/posix__stream_descriptor.html)，必须是固定平台使用。
