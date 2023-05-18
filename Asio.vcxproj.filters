@@ -45,5 +45,11 @@
     <ClCompile Include="src\10计时器.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\11io_service类_一个实例一个线程.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\12io_service类_一个实例和多个线程处理.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -13,6 +13,10 @@
   - [使用`asio::io_service`连接到系统文件](#使用asioio_service连接到系统文件)
     - [`windows`](#windows)
     - [`posix`](#posix)
+  - [计时器](#计时器)
+  - [`asio::io_service`类](#asioio_service类)
+    - [一个io\_service实例和一个处理线程的单线程例子](#一个io_service实例和一个处理线程的单线程例子)
+    - [一个`io_service`实例和多个处理线程的多线程例子](#一个io_service实例和多个处理线程的多线程例子)
 
 # 环境
 
@@ -408,6 +412,151 @@ int main() {
 namespace asio = boost::asio;
 
 int main() {
+	asio::io_service service;
+	int h = open("test.txt", O_RDWR | O_CREAT, 0);
+	asio::posix::stream_descriptor sh(service);
+	sh.assign(h);
+
+	asio::write(sh, asio::buffer("笑死人了惹\n"));
+}
+```
+
+两个程序并无太大区别，但是我特意在`asio`的接口上展现了一点不同：
+    `windows`写入数据用的是成员函数`write_some()`
+
+`linux`是公共函数`asio::write`；
+
+并且windows绑定文件资源句柄是用构造函数，Linux是用的`assign()`成员函数。
+
+这些都是无所谓的，只是为了展示可以，你大可随意。
+
+`asio`上真的不同的无非是 [**`asio::windows::stream_handle`**](https://www.boost.org/doc/libs/1_82_0/doc/html/boost_asio/reference/windows__stream_handle.html) 和 [**`asio::posix::stream_descriptor`**](https://www.boost.org/doc/libs/1_82_0/doc/html/boost_asio/reference/posix__stream_descriptor.html)，必须是固定平台使用。
+
+<br>
+
+## 计时器
+
+```cpp
+#include<iostream>
+#include<boost/asio.hpp>
+namespace asio = boost::asio;
+using namespace std::placeholders;
+bool read = false;
+
+void deadline_handler(const boost::system::error_code&) {
+    std::cout << (read ? "read successfully" : "read failed") << std::endl;
+}
+void read_handler(const boost::system::error_code&) {
+    read = true;
+}
+int main() {
+    asio::io_service service;
+    asio::ip::tcp::socket sock(service);
+    char data[512]{};
+    sock.async_read_some(asio::buffer(data), std::bind(read_handler, _1));
+    asio::deadline_timer t(service, boost::posix_time::milliseconds(100));
+    t.async_wait(&deadline_handler);
+    service.run();
+}
+```
+
+运行结果：
+
+    read successfully
+
+`asio::deadline_timer`会创建一个线程进行计时，`t.async_wait`等待到达时间后调用函数在线程中执行。
+
+<br>
+
+## `asio::io_service`类
+
+**配合`04异步服务端`运行**。
+
+### 一个io_service实例和一个处理线程的单线程例子
+
+```cpp
+#include<iostream>
+#include<fmt/core.h>
+#include<boost/asio.hpp>
+namespace asio = boost::asio;
+namespace ip = asio::ip;
+
+void connect_handler(ip::tcp::socket& sock, const boost::system::error_code& ec) {//连接成功后打印
+	if (ec) return;
+	static char data[1024]{};
+	sock.read_some(asio::buffer(data));
+	fmt::print("client: {}\n", data);
+}
+void timeout_handler(const boost::system::error_code&) {
+	fmt::print("笑死\n");
+}
+int main() {
+	asio::io_service service;
+	ip::tcp::socket sock{ service };
+	ip::tcp::endpoint ep{ ip::address::from_string("127.0.0.1"),2001 };
+	sock.async_connect(ep, [&](const auto& ec)
+		{connect_handler(sock, ec); });
+	asio::deadline_timer t(service, boost::posix_time::seconds(5));
+	t.async_wait(timeout_handler);
+	service.run();
+}
+```
+
+运行结果：
+
+    client: 2023-05-18 01:39:23.9009556 server:笑死人了惹
+
+    笑死
+
+这实际上和04的异步`client`差不多，就不过多介绍了
+
+<br>
+
+### 一个`io_service`实例和多个处理线程的多线程例子
+
+```cpp
+#include<iostream>
+#include<fmt/core.h>
+#include<boost/asio.hpp>
+#include<boost/thread.hpp>
+namespace asio = boost::asio;
+namespace ip = asio::ip;
+
+void connect_handler(ip::tcp::socket& sock) {//连接成功后打印
+	static char data[1024]{};
+	sock.read_some(asio::buffer(data));
+	fmt::print("client: {}\n", data);
+}
+void timeout_handler(const boost::system::error_code&){//这个形参必须需要 
+	fmt::print("笑死\n");
+}
+void run_service(asio::io_service& service)
+{
+	service.run();//会执行两次connect_handler
+}
+int main() {
+	ip::tcp::endpoint ep{ ip::address::from_string("127.0.0.1"),2001 };
+	asio::io_service service;
+	ip::tcp::socket sock1(service);
+	ip::tcp::socket sock2(service);
+	sock1.async_connect(ep, std::bind(connect_handler, std::ref(sock1)));
+	sock2.async_connect(ep, std::bind(connect_handler, std::ref(sock2)));
+	
+	asio::deadline_timer t(service, boost::posix_time::seconds(5));//会创建一个线程
+	t.async_wait(timeout_handler);//异步计时器，等待一定时间后调用，在线程中执行
+	
+	boost::thread t2(run_service, std::ref(service));//线程将运行两个connect_handler函数
+	t2.join();
+}
+```
+
+运行结果：
+
+    client: 2023-05-18 01:42:54.6338016 server:笑死人了惹
+
+    client: 2023-05-18 01:42:54.6343521 server:笑死人了惹
+
+    笑死
 	asio::io_service service;
 	int h = open("test.txt", O_RDWR | O_CREAT, 0);
 	asio::posix::stream_descriptor sh(service);
