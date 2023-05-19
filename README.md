@@ -1,24 +1,26 @@
 - [环境](#环境)
 - [前言](#前言)
 - [正文](#正文)
-  - [线程池的基本使用`asio::thread_pool`](#线程池的基本使用asiothread_pool)
-  - [利用`asio`实现一个简单的同步回声`TCP` `server`与`client`](#利用asio实现一个简单的同步回声tcp-server与client)
-    - [`server`](#server)
-    - [`client`](#client)
-  - [完成一个异步`TCP` `server`和`client`](#完成一个异步tcp-server和client)
-    - [`server`](#server-1)
-    - [`client`](#client-1)
-  - [`asio`信号量](#asio信号量)
-  - [端口设置与读写](#端口设置与读写)
-  - [使用`asio::io_service`连接到系统文件](#使用asioio_service连接到系统文件)
-    - [`windows`](#windows)
-    - [`posix`](#posix)
-  - [计时器](#计时器)
-  - [`asio::io_service`类](#asioio_service类)
-    - [一个io\_service实例和一个处理线程的单线程例子](#一个io_service实例和一个处理线程的单线程例子)
-    - [一个`io_service`实例和多个处理线程的多线程例子](#一个io_service实例和多个处理线程的多线程例子)
-    - [多个`io_service`实例和多个处理线程的多线程例子](#多个io_service实例和多个处理线程的多线程例子)
-    - [总结](#总结)
+	- [线程池的基本使用`asio::thread_pool`](#线程池的基本使用asiothread_pool)
+	- [利用`asio`实现一个简单的同步回声`TCP` `server`与`client`](#利用asio实现一个简单的同步回声tcp-server与client)
+		- [`server`](#server)
+		- [`client`](#client)
+	- [完成一个异步`TCP` `server`和`client`](#完成一个异步tcp-server和client)
+		- [`server`](#server-1)
+		- [`client`](#client-1)
+	- [`asio`信号量](#asio信号量)
+	- [端口设置与读写](#端口设置与读写)
+	- [使用`asio::io_service`连接到系统文件](#使用asioio_service连接到系统文件)
+		- [`windows`](#windows)
+		- [`posix`](#posix)
+	- [计时器](#计时器)
+	- [`asio::io_service`类](#asioio_service类)
+		- [一个io\_service实例和一个处理线程的单线程例子](#一个io_service实例和一个处理线程的单线程例子)
+		- [一个`io_service`实例和多个处理线程的多线程例子](#一个io_service实例和多个处理线程的多线程例子)
+		- [多个`io_service`实例和多个处理线程的多线程例子](#多个io_service实例和多个处理线程的多线程例子)
+		- [总结](#总结)
+	- [IP地址](#ip地址)
+	- [端点](#端点)
 
 # 环境
 
@@ -626,3 +628,85 @@ service.run();
 在上面的例子中，只要`sock`建立了一个连接，`connect_handler`就会被调用，然后接着`service.run()`就会完成执行。
 
 如果你想要`service.run()`接着执行，你需要分配更多的工作给它。这里有两个方式来完成这个目标。在`connect_handler`中启动另外一个异步操作来分配更多的工作。
+
+<br>
+
+## IP地址
+
+对于`IP`地址的处理，`Boost.Asio`提供了`ip::address` , `ip::address_v4`和`ip::address_v6`类。 它们提供了相当多的函数。下面列出了最重要的几个：
+
+`ip::address(v4_or_v6_address)`:这个函数把一个v4或者v6的地址转换成`ip::address`。
+
+`ip::address:from_string(str)`：这个函数根据一个`IPv4`地址（用.隔开的）或者一个`IPv6`地址（十六进制表示）创建一个地址。
+
+`ip::address::to_string()` ：这个函数返回这个地址的字符串。
+
+`ip::address_v4::broadcast([addr, mask])`:这个函数创建了一个广播地址 `ip::address_v4::any()`：这个函数返回一个能表示任意地址的地址。
+
+`ip::address_v4::loopback(), ip_address_v6::loopback()`：这个函数返回环路地址（为v4/v6协议）
+
+`ip::host_name()`：这个函数用`string`数据类型返回当前的主机名。
+
+大多数情况你会选择用`ip::address::from_string`：
+
+```cpp
+ip::address addr = ip::address::from_string("127.0.0.1");
+```
+
+如果你想通过一个主机名进行连接，下面的代码片段是无用的：
+
+```cpp
+// 抛出异常
+ip::address addr = ip::address::from_string("www.yahoo.com");
+```
+
+<br>
+
+## 端点
+端点是使用某个端口连接到的一个地址。不同类型的socket有它自己的endpoint类，比如ip::tcp::endpoint、`ip::udp::endpoint`和`ip::icmp::endpoint`
+
+如果想连接到本机的80端口，你可以这样做：
+
+
+```cpp
+ip::tcp::endpoint ep( ip::address::from_string("127.0.0.1"), 80);
+```
+
+有三种方式来让你建立一个端点：
+
+`endpoint()`：这是默认构造函数，某些时候可以用来创建UDP/ICMP socket。
+
+`endpoint(protocol, port)`：这个方法通常用来创建可以接受新连接的服务器端socket。
+
+`endpoint(addr, port)`:这个方法创建了一个连接到某个地址和端口的端点。
+
+例子如下：
+
+```cpp
+ip::tcp::endpoint ep1;
+ip::tcp::endpoint ep2(ip::tcp::v4(), 80);
+ip::tcp::endpoint ep3( ip::address::from_string("127.0.0.1), 80);
+```
+
+如果你想连接到一个主机（不是IP地址），你需要这样做：
+
+```cpp
+asio::io_service service;
+ip::tcp::resolver resolver(service);
+ip::tcp::resolver::query query("www.baidu.com", "80");
+ip::tcp::resolver::iterator iter = resolver.resolve(query);
+ip::tcp::endpoint ep = *iter;
+fmt::print("IP: {} Port: {} 协议类型：{}\n", ep.address().to_string(), ep.port(), ep.protocol().type());
+```
+
+可以使用`nslookup`命令验证结果：
+
+	PS C:\Users\A1387> nslookup www.baidu.com
+	Server:  UnKnown
+	Address:  192.168.43.1
+
+	Non-authoritative answer:
+	Name:    www.a.shifen.com
+	Addresses:  36.152.44.96
+	          36.152.44.95
+	Aliases:  www.baidu.com

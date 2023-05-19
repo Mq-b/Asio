@@ -54,5 +54,8 @@
     <ClCompile Include="src\13io_service类_多个实例和多个线程处理.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\14连接到主机.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
