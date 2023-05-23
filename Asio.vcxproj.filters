@@ -57,5 +57,11 @@
     <ClCompile Include="src\14连接到主机.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\15udp异步读写服务端.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\16udp同步读写客户端.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

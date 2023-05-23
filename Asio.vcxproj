@@ -59,6 +59,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\14连接到主机.cpp" />
+    <ClCompile Include="src\15udp异步读写服务端.cpp" />
+    <ClCompile Include="src\16udp同步读写客户端.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
