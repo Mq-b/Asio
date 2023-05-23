@@ -710,3 +710,60 @@ fmt::print("IP: {} Port: {} 协议类型：{}\n", ep.address().to_string(), ep.p
 	Addresses:  36.152.44.96
 	          36.152.44.95
 	Aliases:  www.baidu.com
+
+## `UDP`同步`client`与异步`service`
+
+### `service`
+
+```cpp
+#include <iostream>
+#include <boost/asio.hpp>
+namespace asio = boost::asio;
+namespace ip = boost::asio::ip;
+
+asio::io_context service;
+ip::udp::socket sock(service);
+asio::ip::udp::endpoint sender_ep;
+char buff[512]{};
+
+void on_read(const boost::system::error_code & err, std::size_t read_bytes) {
+  std::cout << "read " << read_bytes <<" "<<buff<< std::endl;
+  sock.async_receive_from(asio::buffer(buff), sender_ep, on_read);///异步读取，循环调用当前函数
+}
+int main(){
+    ip::udp::endpoint ep(ip::udp::v4(),80);
+    sock.open(ep.protocol());//指定打开的协议类型
+    sock.set_option(asio::ip::udp::socket::reuse_address(true));//设置套接字属性
+    sock.bind(ep);
+    sock.async_receive_from(asio::buffer(buff),sender_ep,on_read);
+    service.run();
+}
+```
+
+### `client`
+
+```cpp
+#include <iostream>
+#include <boost/asio.hpp>
+namespace asio = boost::asio;
+namespace ip = boost::asio::ip;
+int main()
+{
+	asio::io_context service;
+  	ip::udp::socket sock(service);
+	sock.open(ip::udp::v4());
+	ip::udp::endpoint receiver_ep(ip::address::from_string("127.0.0.1"),80);
+	sock.send_to(asio::buffer("testing\n"),receiver_ep);//同步发送数据
+	char buff[512]{};
+	ip::udp::endpoint sender_ep{};
+	sock.receive_from(asio::buffer(buff),sender_ep);//异步地从一个指定的端点获取数据并写入到给定的缓冲区。在读完所有数据或者错误出现之前，这个函数都是阻塞的
+}
+```
+
+配合着运行结果是：
+
+	read 9 testing
+
+值得一提的是`client`的最后一句`receive_from`成员函数调用，会一直阻塞。因为`service`压根就不会发送数据，它是接收数据的。
+
+另外你可以注意到了，我们`UDP`用到了很多的**空`asio::ip::udp::endpoint`** 对象，设计如此，不用太过在意。
