@@ -58,9 +58,16 @@
     <ClCompile Include="src\13io_service类_多个实例和多个线程处理.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\14连接到主机.cpp" />
-    <ClCompile Include="src\15udp异步读写服务端.cpp" />
-    <ClCompile Include="src\16udp同步读写客户端.cpp" />
+    <ClCompile Include="src\14连接到主机.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="src\15udp异步读写服务端.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="src\16udp同步读写客户端.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="src\17使用Win的文件句柄异步读取.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

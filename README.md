@@ -24,6 +24,10 @@
 	- [`UDP`同步`client`与异步`service`](#udp同步client与异步service)
 		- [`service`](#service)
 		- [`client`](#client-2)
+	- [套接字缓冲区](#套接字缓冲区)
+	- [缓冲区封装函数](#缓冲区封装函数)
+	- [`connect`方法](#connect方法)
+	- [`read/write`方法](#readwrite方法)
 
 # 环境
 
@@ -736,7 +740,7 @@ void on_read(const boost::system::error_code & err, std::size_t read_bytes) {
 int main(){
     ip::udp::endpoint ep(ip::udp::v4(),80);
     sock.open(ep.protocol());//指定打开的协议类型
-    sock.set_option(asio::ip::udp::socket::reuse_address(true));//设置套接字属性
+    sock.set_option(asio::ip::udp::socket::reuse_address(true));//设置套接字属性 用于允许套接字绑定到已在使用的地址
     sock.bind(ep);
     sock.async_receive_from(asio::buffer(buff),sender_ep,on_read);
     service.run();
@@ -770,3 +774,229 @@ int main()
 值得一提的是`client`的最后一句`receive_from`成员函数调用，会一直阻塞。因为`service`压根就不会发送数据，它是接收数据的。
 
 另外你可以注意到了，我们`UDP`用到了很多的**空`asio::ip::udp::endpoint`** 对象，设计如此，不用太过在意。
+
+<br>
+
+## 套接字缓冲区
+
+当从一个套接字读写内容时，你需要一个缓冲区，用来保存读取和写入的数据。缓冲区内存的有效时间必须比`I/O`操作的时间要长；你需要保证它们在`I/O`操作结束之前不被释放。 对于同步操作来说，这很容易；当然，这个缓冲区在`receive`和`send`时都存在。
+
+```cpp
+char buff[512];
+...
+sock.receive(buffer(buff));
+strcpy(buff, "ok\n");
+sock.send(buffer(buff));
+```
+
+但是在**异步操作时就没这么简单了**，看下面的代码片段：
+
+```cpp
+// 非常差劲的代码 ...
+void on_read(const boost::system::error_code & err, std::size_t read_bytes)
+{ ... }
+void func() {
+    char buff[512];
+    sock.async_receive(buffer(buff), on_read);
+}
+```
+在我们调用`async_receive()`之后，`buff`就已经超出有效范围，它的内存当然会被释放。当我们开始从套接字接收一些数据时，我们会把它们拷贝到一片已经不属于我们的内存中；它可能会被释放，或者被其他代码重新开辟来存入其他的数据，结果就是：内存冲突。
+
+对于上面的问题有几个解决方案：
+
+* 使用全局缓冲区
+* 创建一个缓冲区，然后在操作结束时释放它
+* 使用一个集合对象管理这些套接字和其他的数据，比如缓冲区数组
+
+第一个方法显然不是很好，因为我们都知道全局变量非常不好。此外，如果两个实例使用同一个缓冲区怎么办？
+
+下面是第二种方式的实现：
+
+```cpp
+void on_read(char * ptr, const boost::system::error_code & err, std::size_t read_bytes) {                        
+    delete[] ptr;
+}
+....
+char * buff = new char[512];
+sock.async_receive(buffer(buff, 512), boost::bind(on_read,buff,_1,_2))
+
+```
+
+这种方式挺好的。如果你想要缓冲区在操作结束后自动超出范围，使用共享指针
+
+```cpp
+struct shared_buffer {
+    boost::shared_array<char> buff;
+    int size;
+    shared_buffer(size_t size) : buff(new char[size]), size(size) {
+    }
+    mutable_buffers_1 asio_buff() const {
+        return buffer(buff.get(), size);
+    }
+};
+
+
+// 当on_read超出范围时, boost::bind对象被释放了,
+// 同时也会释放共享指针
+void on_read(shared_buffer, const boost::system::error_code & err, std::size_t read_bytes) {}
+sock.async_receive(buff.asio_buff(), boost::bind(on_read,buff,_1,_2));
+```
+
+<br>
+
+## 缓冲区封装函数
+
+纵观所有代码，你会发现：无论什么时候，当我们需要对一个`buffer`进行读写操作时，代码会把实际的缓冲区对象封装在一个`buffer()`方法中，然后再把它传递给方法调用：
+
+```cpp
+char buff[512];
+sock.async_receive(buffer(buff), on_read);
+```
+
+基本上我们都会把缓冲区包含在一个类中以便`Boost.Asio`的方法能遍历这个缓冲区，比方说，使用下面的代码：
+
+```cpp
+sock.async_receive(some_buffer, on_read);
+```
+
+实例`some_buffer`需要满足一些需求，叫做**`ConstBufferSequence`**或者**`MutableBufferSequence`**（你可以在`Boost.Asio`的文档中查看它们）。创建你自己的类去处理这些需求的细节是非常复杂的，但是`Boost.Asio`已经提供了一些类用来处理这些需求。所以你不用直接访问这些缓冲区，而可以使用`buffer()`方法。
+
+自信地讲，你可以把下面列出来的类型都包装到一个buffer()方法中：
+
+	一个char[] const 数组
+	一个字节大小的void *指针
+	一个std::string类型的字符串
+	一个POD const数组（POD代表纯数据，这意味着构造器和释放器不做任何操作）
+	一个pod数据的std::vector
+	一个包含pod数据的boost::array
+	一个包含pod数据的std::array
+下面的代码都是有效的：
+
+```cpp
+struct pod_sample { int i; long l; char c; };
+...
+char b1[512];
+void * b2 = new char[512];
+std::string b3; b3.resize(128);
+pod_sample b4[16];
+std::vector<pod_sample> b5; b5.resize(16);
+boost::array<pod_sample,16> b6;
+std::array<pod_sample,16> b7;
+sock.async_send(buffer(b1), on_read);
+sock.async_send(buffer(b2,512), on_read);
+sock.async_send(buffer(b3), on_read);
+sock.async_send(buffer(b4), on_read);
+sock.async_send(buffer(b5), on_read);
+sock.async_send(buffer(b6), on_read);
+sock.async_send(buffer(b7), on_read);
+```
+
+总的来说就是：与其创建你自己的类来处理`ConstBufferSequence`或者`MutableBufferSequence`的需求，不如创建一个能在你需要的时候保留缓冲区，然后返回一个`mutable_buffers_1`实例的类，而我们早在`shared_buffer`类中就这样做了。
+
+## `connect`方法
+
+这些方法把套接字连接到一个端点。
+
+`connect(socket, begin [, end] [, condition])`：这个方法遍历队列中从start到end的端点来尝试同步连接。begin迭代器是调用`socket_type::resolver::query`的返回结果（你可能需要回顾一下端点这个章节）。特别提示end迭代器是可选的；你可以忽略它。你还可以提供一个condition的方法给每次连接尝试之后调用。用法是Iterator connect_condition(const `boost::system::error_code & err,Iterator next)`;。你可以选择返回一个不是next的迭代器，这样你就可以跳过一些端点。
+
+`async_connect(socket, begin [, end] [, condition], handler)`：这个方法异步地调用连接方法，在结束时，它会调用完成处理方法。用法是`void handler(constboost::system::error_code & err, Iterator iterator)`;。传递给处理方法的第二个参数是连接成功端点的迭代器（或者end迭代器）。
+
+```cpp
+int main(){
+    asio::io_context service;
+    ip::tcp::resolver resolver(service);
+    ip::tcp::resolver::iterator iter = resolver.resolve(ip::tcp::resolver::query("www.baidu.com","80"));
+    ip::tcp::socket sock(service);
+    connect(sock, iter);
+    char buf[512]{};
+    read(sock,asio::buffer(buf));//读不到东西，会堵塞在这里
+    std::cout<<buf<<'\n';
+}
+```
+
+<br>
+
+## `read/write`方法
+这些方法对一个流进行读写操作（可以是套接字，或者其他表现得像流的类）：
+
+* `async_read(stream, buffer [, completion] ,handler)`：这个方法异步地从一个流读取。结束时其处理方法被调用。处理方法的格式是：
+  
+  `void handler(const boost::system::error_code & err, size_t bytes);`。
+
+  你可以选择指定一个完成处理方法。完成处理方法会在每个read操作调用成功之后调用，然后告诉`Boost.Asio async_read`操作是否完成（如果没有完成，它会继续读取）。它的格式是：
+
+  `size_t completion(const boost::system::error_code& err, size_t bytes_transfered)` 。
+
+  当这个完成处理方法返回0时，我们认为`read`操作完成；如果它返回一个非0值，它表示了下一个`async_read_some`操作需要从流中读取的字节数。接下来会有一个例子来详细展示这些。
+
+* `async_write(stream, buffer [, completion], handler)`：这个方法异步地向一个流写入数据。参数的意义和async_read是一样的。
+  
+* `read(stream, buffer [, completion])`：这个方法同步地从一个流中读取数据。参数的意义和async_read是一样的。
+  
+* `write(stream, buffer [, completion])`: 这个方法同步地向一个流写入数据。参数的意义和async_read是一样的。
+
+```cpp
+async_read(stream, stream_buffer [, completion], handler)
+async_write(strean, stream_buffer [, completion], handler)
+write(stream, stream_buffer [, completion])//方括号代表可选，write和read可以只需要两个参数
+read(stream, stream_buffer [, completion])
+```
+
+首先，要注意第一个参数变成了流，**而不单是`socket`**。这个参数包含了`socket`**但不仅仅是`socket`**。比如，你可以用一个`Windows`的**文件句柄**来替代`socket`。 当下面情况出现时，所有`read`和`write`操作都会结束：
+
+* 可用的缓冲区满了（当读取时）或者所有的缓冲区已经被写入（当写入时）
+* 完成处理方法返回0（如果你提供了这么一个方法）
+* 错误发生时
+
+下面的代码会异步地从一个socket中间读取数据直到读取到’\n’：
+
+```cpp
+io_service service;
+ip::tcp::socket sock(service);
+char buff[512];
+size_t up_to_enter(const boost::system::error_code &, size_t bytes) {
+    for ( size_t i = 0; i < bytes; ++i)
+        if ( buff[i] == '\n') 
+            return 0;
+    return 1; 
+ }
+void on_read(const boost::system::error_code &, size_t) {}
+...
+async_read(sock, buffer(buff), up_to_enter, on_read);
+```
+
+这里的`up_to_endter()`是**完成处理函数**，它会等待，**`handler()`** 完成，即`on_read()`函数运行完被调用。
+
+我们和`windows`的句柄搭配使用做了一个更好的例子
+
+```cpp
+#include <iostream>
+#include <boost/asio.hpp>
+namespace asio = boost::asio;
+namespace ip = boost::asio::ip;
+using namespace std::chrono_literals;
+using namespace std::placeholders;
+
+void handler(const boost::system::error_code&, size_t bytes, asio::streambuf& buf) {
+	std::cout << "读取\n";
+	std::istream in(&buf);
+	std::string line;
+	std::getline(in, line);
+	std::cout << "first line: " << line << std::endl;
+}
+int main() {
+	asio::streambuf buf;
+	asio::io_context service;
+	HANDLE h = CreateFile(TEXT("1.txt"), GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_ALWAYS, FILE_FLAG_OVERLAPPED, NULL);
+	asio::windows::stream_handle h2(service, h);
+	asio::async_read(h2, buf, asio::transfer_exactly(256), std::bind(handler, _1, _2, std::ref(buf)));//读取前256个字符，即第二个参数完成处理方法
+	service.run();
+}
+```
+
+运行结果：
+
+	读取
+	first line: 笑死人了惹
+
+这个例子相比于上一个，更加关注的是 **`async_read()`**的第三个参数，而不是第二个，这里是直接用了一个内建的仿函数。

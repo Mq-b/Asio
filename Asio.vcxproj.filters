@@ -63,5 +63,8 @@
     <ClCompile Include="src\16udp同步读写客户端.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\17使用Win的文件句柄异步读取.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
