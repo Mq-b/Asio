@@ -12,7 +12,6 @@ void handler(const boost::system::error_code&, size_t bytes, asio::streambuf& bu
 	std::getline(in, line);
 	std::cout << "first line: " << line << std::endl;
 }
-
 int main() {
 	asio::streambuf buf;
 	asio::io_context service;

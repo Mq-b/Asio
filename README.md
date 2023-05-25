@@ -28,6 +28,7 @@
 	- [缓冲区封装函数](#缓冲区封装函数)
 	- [`connect`方法](#connect方法)
 	- [`read/write`方法](#readwrite方法)
+	- [`read_until/async_read_until`方法](#read_untilasync_read_until方法)
 
 # 环境
 
@@ -921,11 +922,11 @@ int main(){
 
 * `async_read(stream, buffer [, completion] ,handler)`：这个方法异步地从一个流读取。结束时其处理方法被调用。处理方法的格式是：
   
-  `void handler(const boost::system::error_code & err, size_t bytes);`。
+  - `void handler(const boost::system::error_code & err, size_t bytes);`。
 
   你可以选择指定一个完成处理方法。完成处理方法会在每个read操作调用成功之后调用，然后告诉`Boost.Asio async_read`操作是否完成（如果没有完成，它会继续读取）。它的格式是：
 
-  `size_t completion(const boost::system::error_code& err, size_t bytes_transfered)` 。
+  - `size_t completion(const boost::system::error_code& err, size_t bytes_transfered)` 。
 
   当这个完成处理方法返回0时，我们认为`read`操作完成；如果它返回一个非0值，它表示了下一个`async_read_some`操作需要从流中读取的字节数。接下来会有一个例子来详细展示这些。
 
@@ -999,4 +1000,73 @@ int main() {
 	读取
 	first line: 笑死人了惹
 
-这个例子相比于上一个，更加关注的是 **`async_read()`**的第三个参数，而不是第二个，这里是直接用了一个内建的仿函数。
+这个例子相比于上一个，更加关注的是 **`async_read()`** 的第三个参数，而不是第二个，这里是直接用了一个内建的仿函数。
+
+<br>
+
+## `read_until/async_read_until`方法
+
+这些方法在条件满足之前会一直读取：
+
+* `async_read_until(stream, stream_buffer, delim, handler)`:这个方法启动一个异步read操作。**`read`操作会在读取到某个分隔符时结束**。分隔符可以是字符,std::string或者boost::regex。处理方法的格式为：
+  
+  - **`void handler(const boost::system::error_code & err, size_t bytes);`**。
+  
+* `async_read_until(strem, stream_buffer, completion, handler)`：这个方法和之前的方法是一样的，但是**没有分隔符**，而**是一个完成处理方法**。完成处理方法的格式为：
+  
+  - **`pair< iterator,bool > completion(iterator begin, iterator end);`**，
+  
+  其中迭代器的类型为`buffers_iterator< streambuf::const_buffers_type >`。你需要记住的是这个迭代器是支持随机访问的。你扫描整个区间（begin，end），然后决定read操作是否应该结束。返回的结果是一个**结果对（`pair`）**，第一个成员是一个迭代器，它指向最后被这个方法访问的字符；**第二个成员指定read操作是否需要结束，需要时返回true，否则返回false**。
+  
+* `read_until(stream, stream_buffer, delim)`：这个方法执行一个同步的read操作，参数的意义和async_read_until一样。
+  
+* `read_until(stream, stream_buffer, completion)`：这个方法执行一个同步的read操作，参数的意义和async_read_until一样。
+
+```cpp
+#include <iostream>
+#include <boost/asio.hpp>
+namespace asio = boost::asio;
+namespace ip = boost::asio::ip;
+using namespace std::placeholders;
+
+typedef asio::buffers_iterator<asio::streambuf::const_buffers_type> iterator;
+std::pair<iterator, bool> match_punct(iterator begin, iterator end) {
+    while (begin != end) {
+        if (*begin == '\n')
+            return { begin, true };//如果是符号，那么read结束（根据第二个参数）
+        begin++;
+    }
+    std::cout << "可以结束read" << std::endl;
+    return { end, false };
+}
+void on_read(const boost::system::error_code&, size_t,asio::streambuf& buf) {
+    std::cout << "读取" << std::endl;
+    std::istream in(&buf);
+    std::string line;
+    std::getline(in, line);
+    std::cout << "first line: " << line << std::endl;
+}
+int main() {
+    asio::streambuf buf;
+    asio::io_context service;
+    ip::tcp::endpoint ep(ip::address::from_string("127.0.0.1"), 2001);
+    ip::tcp::socket sock{ service };
+    sock.connect(ep);
+    asio::async_read_until(sock, buf, match_punct, std::bind(on_read, _1, _2, std::ref(buf)));
+    service.run();
+}
+```
+和04配合
+运行结果：
+
+	可以结束read
+	读取
+	first line: 2023-05-25 02:36:28.2537980 server:绗戞浜轰簡鎯
+
+本机当前是`gbk`，打印发送来的`utf8`显示在终端，出现乱码是正常现象。
+
+如果我们想读到一个空格时就结束，我们需要把最后一行修改为：
+
+```cpp
+async_read_until(sock, buff, ' ', on_read);
+```
