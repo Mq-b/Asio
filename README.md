@@ -29,6 +29,7 @@
 	- [`connect`方法](#connect方法)
 	- [`read/write`方法](#readwrite方法)
 	- [`read_until/async_read_until`方法](#read_untilasync_read_until方法)
+	- [`*_at`方法](#_at方法)
 
 # 环境
 
@@ -1000,7 +1001,7 @@ int main() {
 	读取
 	first line: 笑死人了惹
 
-这个例子相比于上一个，更加关注的是 **`async_read()`** 的第三个参数，而不是第二个，这里是直接用了一个内建的仿函数。
+这个例子相比于上一个，更加关注的是 **`async_read()`** 的第四个参数，而不是第三个，这里是直接用了一个内建的仿函数。
 
 <br>
 
@@ -1070,3 +1071,36 @@ int main() {
 ```cpp
 async_read_until(sock, buff, ' ', on_read);
 ```
+
+<br>
+
+## `*_at`方法
+
+```cpp
+#include <iostream>
+#include <boost/asio.hpp>
+namespace asio = boost::asio;
+namespace ip = boost::asio::ip;
+using namespace std::placeholders;
+
+int main() {
+	asio::io_context service;
+	HANDLE file = CreateFile(TEXT("1.txt"), GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_ALWAYS, FILE_FLAG_OVERLAPPED, NULL);
+	asio::windows::random_access_handle h(service, file);
+	asio::streambuf buf;
+	read_at(h, 4, buf, asio::transfer_exactly(6));//从文件偏移4的位置读取6个字节
+	std::istream in(&buf);
+	std::string line;
+	std::getline(in, line);
+	std::cout << "first line: " << line << std::endl;
+}
+```
+
+读取`gb2312`编码的文件`1.txt`，运行结果：
+
+	first line: 人了惹
+
+在此编码下中文占两字节，所以无问题。
+需要注意的是`asio::transfer_exactly(6)`，这里表示读取`6`个字节，没问题，因为文件后面不止`6`字节，但是如果数字过大超过文件，那就会抛出一个异常。
+
+至于其他的一些异步的、写的各种版本，和前面的格式差不多。
