@@ -72,5 +72,8 @@
     <ClCompile Include="src\19读取写入的_at方法.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\20异步工作.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -30,6 +30,7 @@
 	- [`read/write`方法](#readwrite方法)
 	- [`read_until/async_read_until`方法](#read_untilasync_read_until方法)
 	- [`*_at`方法](#_at方法)
+	- [异步任务](#异步任务)
 
 # 环境
 
@@ -1104,3 +1105,87 @@ int main() {
 需要注意的是`asio::transfer_exactly(6)`，这里表示读取`6`个字节，没问题，因为文件后面不止`6`字节，但是如果数字过大超过文件，那就会抛出一个异常。
 
 至于其他的一些异步的、写的各种版本，和前面的格式差不多。
+
+## 异步任务
+
+```cpp
+#include <boost/thread.hpp>
+#include <boost/asio.hpp>
+#include <iostream>
+#include<functional>
+#include<print>
+#include<mutex>
+using namespace boost::asio;
+std::mutex m;
+
+void func(int i) {
+    std::lock_guard lc{ m };
+    std::cout << std::this_thread::get_id() << ' ';
+    std::print("func called，i= {}\n", i);
+}
+void worker_thread(io_service& service) {
+    service.run();
+}
+
+int main(int argc, char* argv[]) {
+    std::cout << "main ID: " << std::this_thread::get_id() << '\n';
+    io_service service;
+    for (int i = 0; i < 10; ++i)
+        service.post(boost::bind(func, i));//io_context保证处理程序仅在当前正在调用 run() 、run_one() 、poll() 或 poll_one() 个成员函数的线程中调用
+    boost::thread_group threads;//线程池对象
+    for (int i = 0; i < 3; ++i)
+        threads.create_thread(std::bind(worker_thread, std::ref(service)));
+    // 等待所有线程被创建完
+    boost::this_thread::sleep(boost::posix_time::millisec(500));
+    threads.join_all();
+}
+```
+
+可能的运行结果：
+
+	main ID: 29352
+	5764 func called，i= 0
+	31908 func called，i= 1
+	7528 func called，i= 2
+	5764 func called，i= 3
+	31908 func called，i= 4
+	7528 func called，i= 5
+	5764 func called，i= 6
+	31908 func called，i= 7
+	7528 func called，i= 8
+	5764 func called，i= 9
+
+异步任务只有在调用`run()`方法的时候才会运行。
+
+通过打印线程ID相信你也可以注意到。
+
+**有时候你会想让一些异步处理方法顺序执行。比如，你去一个餐馆（go_to_restaurant），下单（order），然后吃（eat）。你需要先去餐馆，然后下单，最后吃。这样的话，你需要用到`io_service::strand`，这个方法会让你的异步方法被顺序调用。看下面的例子：**
+
+```cpp
+#include<iostream>
+#include<boost/asio.hpp>
+#include<boost/thread.h>
+
+using namespace boost::asio;
+io_service service;
+void func(int i) {
+    std::cout << "func called, i= " << i << "/" << boost::this_thread::get_id() << std::endl;
+}
+void worker_thread() {
+    service.run();
+}
+int main(int argc, char* argv[])
+{
+    io_service::strand strand_one(service), strand_two(service);
+    for ( int i = 0; i < 5; ++i)
+        service.post( strand_one.wrap( boost::bind(func, i)));
+    for ( int i = 5; i < 10; ++i)
+        service.post( strand_two.wrap( boost::bind(func, i)));
+    boost::thread_group threads;
+    for ( int i = 0; i < 3; ++i)
+        threads.create_thread(worker_thread);
+    // 等待所有线程被创建完
+    boost::this_thread::sleep( boost::posix_time::millisec(500));
+    threads.join_all();
+}
+```
