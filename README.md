@@ -1162,30 +1162,49 @@ int main(int argc, char* argv[]) {
 **有时候你会想让一些异步处理方法顺序执行。比如，你去一个餐馆（go_to_restaurant），下单（order），然后吃（eat）。你需要先去餐馆，然后下单，最后吃。这样的话，你需要用到`io_service::strand`，这个方法会让你的异步方法被顺序调用。看下面的例子：**
 
 ```cpp
-#include<iostream>
-#include<boost/asio.hpp>
-#include<boost/thread.h>
-
+#include <boost/thread.hpp>
+#include <boost/asio.hpp>
+#include <iostream>
+#include<mutex>
+#include<functional>
+#include<print>
 using namespace boost::asio;
+
 io_service service;
+std::mutex m;
+
 void func(int i) {
+    std::lock_guard lc{ m };
     std::cout << "func called, i= " << i << "/" << boost::this_thread::get_id() << std::endl;
 }
 void worker_thread() {
     service.run();
 }
-int main(int argc, char* argv[])
-{
-    io_service::strand strand_one(service), strand_two(service);
-    for ( int i = 0; i < 5; ++i)
-        service.post( strand_one.wrap( boost::bind(func, i)));
-    for ( int i = 5; i < 10; ++i)
-        service.post( strand_two.wrap( boost::bind(func, i)));
+int main(int argc, char* argv[]){
+    io_service::strand strand_one(service), strand_two(service);//让异步方法被顺序调用
+    for (int i = 0; i < 5; ++i)
+        service.post(strand_one.wrap(boost::bind(func, i)));
+    for (int i = 5; i < 10; ++i)
+        service.post(strand_two.wrap(boost::bind(func, i)));
     boost::thread_group threads;
-    for ( int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i)
         threads.create_thread(worker_thread);
     // 等待所有线程被创建完
-    boost::this_thread::sleep( boost::posix_time::millisec(500));
+    boost::this_thread::sleep(boost::posix_time::millisec(500));
     threads.join_all();
 }
+//我们保证前面的5个线程和后面的5个线程是顺序执行
 ```
+
+可能的运行结果：
+
+	func called, i= 0/8174
+	func called, i= 5/7d1c
+	func called, i= 1/4350
+	func called, i= 6/8174
+	func called, i= 7/8174
+	func called, i= 2/4350
+	func called, i= 8/8174
+	func called, i= 3/4350
+	func called, i= 9/8174
+	func called, i= 4/4350

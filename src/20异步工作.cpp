@@ -1,4 +1,4 @@
-#include <boost/thread.hpp>
+ï»¿#include <boost/thread.hpp>
 #include <boost/asio.hpp>
 #include <iostream>
 #include<functional>
@@ -10,7 +10,7 @@ std::mutex m;
 void func(int i) {
     std::lock_guard lc{ m };
     std::cout << std::this_thread::get_id() << ' ';
-    std::print("func called£¬i= {}\n", i);
+    std::print("func calledï¼Œi= {}\n", i);
 }
 void worker_thread(io_service& service) {
     service.run();
@@ -20,11 +20,11 @@ int main(int argc, char* argv[]) {
     std::cout << "main ID: " << std::this_thread::get_id() << '\n';
     io_service service;
     for (int i = 0; i < 10; ++i)
-        service.post(boost::bind(func, i));//io_context±£Ö¤´¦Àí³ÌÐò½öÔÚµ±Ç°ÕýÔÚµ÷ÓÃ run() ¡¢run_one() ¡¢poll() »ò poll_one() ¸ö³ÉÔ±º¯ÊýµÄÏß³ÌÖÐµ÷ÓÃ
-    boost::thread_group threads;//Ïß³Ì³Ø¶ÔÏó
+        service.post(boost::bind(func, i));//io_contextä¿è¯å¤„ç†ç¨‹åºä»…åœ¨å½“å‰æ­£åœ¨è°ƒç”¨ run() ã€run_one() ã€poll() æˆ– poll_one() ä¸ªæˆå‘˜å‡½æ•°çš„çº¿ç¨‹ä¸­è°ƒç”¨
+    boost::thread_group threads;//çº¿ç¨‹æ± å¯¹è±¡
     for (int i = 0; i < 3; ++i)
         threads.create_thread(std::bind(worker_thread, std::ref(service)));
-    // µÈ´ýËùÓÐÏß³Ì±»´´½¨Íê
+    // ç­‰å¾…æ‰€æœ‰çº¿ç¨‹è¢«åˆ›å»ºå®Œ
     boost::this_thread::sleep(boost::posix_time::millisec(500));
     threads.join_all();
 }
