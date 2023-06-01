@@ -31,7 +31,7 @@
 	- [`read_until/async_read_until`方法](#read_untilasync_read_until方法)
 	- [`*_at`方法](#_at方法)
 	- [异步任务](#异步任务)
-	- [22异步`post()`VS `dispatch()`](#22异步postvs-dispatch)
+	- [异步`post()`VS `dispatch()` VS `wrap()`](#异步postvs-dispatch-vs-wrap)
 
 # 环境
 
@@ -1214,10 +1214,18 @@ int main(int argc, char* argv[]){
 
 <br>
 
-## 22异步`post()`VS `dispatch()`
+## 异步`post()`VS `dispatch()` VS `wrap()`
 
 * **`service.post(handler)`**：这个方法能确保其在请求io_service实例，然后调用指定的处理方法之后立即返回。`handler`W稍后会在某个调用了service.run()的线程中被调用。
 * **`service.dispatch(handler)`**：这个方法请求io_service实例去调用给定的处理方法，但是另外一点，如果当前的线程调用了service.run()，它可以在方法中直接调用`handler`。
+
+* **`service.wrap(handler)`**：这个方法创建了一个封装方法，当被调用时它会调用
+
+**`Dispatch`和`post`的区别**
+
+Post一定是PostQueuedCompletionStatus并且在GetQueuedCompletionStatus 之后执行。
+
+Dispatch会首先检查当前thread是不是io_service.run/runonce/poll/poll_once线程，如果是，则直接运行。
 
 ```cpp
 #include <boost/thread.hpp>
@@ -1256,3 +1264,41 @@ int main(int argc, char* argv[]) {
 
 偶数先输出，然后是奇数。这是因为我用`dispatch()`输出偶数，然后用`post()`输出奇数。`dispatch()`会在返回之前调用`hanlder`，
 因为当前的线程调用了`service.run()`，而`post()`每次都立即返回了。
+
+**`wrap()`**方法
+
+```cpp
+#include<thread>
+#include<functional>
+#include<print>
+#include<iostream>
+#include <boost/asio.hpp>
+using namespace std::literals;
+using namespace boost::asio;
+
+io_service service;
+void dispatched_func_1() {
+    std::cout << "dispatched 1" << std::endl;
+}
+void dispatched_func_2() {
+    std::cout << "dispatched 2" << std::endl;
+}
+void test(std::function<void()> func) {
+    std::cout << "test" << std::endl;
+    service.dispatch(dispatched_func_1);//这里用post也一样
+    func();//最后调用
+}
+void service_run() {
+    service.run();
+}
+int main(int argc, char* argv[]) {
+    test(service.wrap(dispatched_func_2));
+    std::jthread th(service_run);
+}
+```
+
+运行结果：
+
+	test
+	dispatched 1
+	dispatched 2

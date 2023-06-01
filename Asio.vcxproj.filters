@@ -81,5 +81,8 @@
     <ClCompile Include="src\22异步post()VSdispatch().cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\23异步wrap().cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
