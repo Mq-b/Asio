@@ -78,5 +78,8 @@
     <ClCompile Include="src\21保证顺序的异步工作.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\22异步post()VSdispatch().cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

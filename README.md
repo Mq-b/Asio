@@ -31,6 +31,7 @@
 	- [`read_until/async_read_until`方法](#read_untilasync_read_until方法)
 	- [`*_at`方法](#_at方法)
 	- [异步任务](#异步任务)
+	- [22异步`post()`VS `dispatch()`](#22异步postvs-dispatch)
 
 # 环境
 
@@ -1208,3 +1209,50 @@ int main(int argc, char* argv[]){
 	func called, i= 3/4350
 	func called, i= 9/8174
 	func called, i= 4/4350
+
+在上述代码中，我们保证前面的5个线程和后面的5个线程是顺序执行的。func called, i = 0在func called, i = 1之前被调用，然后调用func called, i = 2……同样func called, i = 5在func called, i = 6之前，func called, i = 6在func called, i = 7被调用……你需要注意的是尽管方法是顺序调用的，但是不意味着它们都在同一个线程执行。
+
+<br>
+
+## 22异步`post()`VS `dispatch()`
+
+* **`service.post(handler)`**：这个方法能确保其在请求io_service实例，然后调用指定的处理方法之后立即返回。`handler`W稍后会在某个调用了service.run()的线程中被调用。
+* **`service.dispatch(handler)`**：这个方法请求io_service实例去调用给定的处理方法，但是另外一点，如果当前的线程调用了service.run()，它可以在方法中直接调用`handler`。
+
+```cpp
+#include <boost/thread.hpp>
+#include <boost/asio.hpp>
+#include<print>
+
+using namespace boost::asio;
+io_service service;
+void func(int i) {
+    std::print("func called, i= {}\n", i);
+}
+void run_dispatch_and_post() {
+    for (int i = 0; i < 10; i += 2) {
+        service.dispatch(boost::bind(func, i));//返回之前调用函数
+        service.post(boost::bind(func, i + 1));//直接返回
+    }
+}
+int main(int argc, char* argv[]) {
+    service.post(run_dispatch_and_post);
+    service.run();
+}
+```
+
+运行结果：
+
+	func called, i= 0
+	func called, i= 2
+	func called, i= 4
+	func called, i= 6
+	func called, i= 8
+	func called, i= 1
+	func called, i= 3
+	func called, i= 5
+	func called, i= 7
+	func called, i= 9
+
+偶数先输出，然后是奇数。这是因为我用`dispatch()`输出偶数，然后用`post()`输出奇数。`dispatch()`会在返回之前调用`hanlder`，
+因为当前的线程调用了`service.run()`，而`post()`每次都立即返回了。
