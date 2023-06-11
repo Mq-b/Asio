@@ -84,5 +84,16 @@
     <ClCompile Include="src\23异步wrap().cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="24C++20协程demo.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="25C++20协程搭配asio创建客户端.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="task.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
